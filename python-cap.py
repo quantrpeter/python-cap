@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-Cross-platform screencap tool. Press Cmd+R (Mac) or Win+R (Windows/Linux) to capture.
+Cross-platform screencap tool. Press Ctrl+Cmd+3 (Mac) or Ctrl+Alt+3 (Windows/Linux) to capture.
 After capture, annotate with colors, arrow, rect, circle, and brush.
 """
 
+import os
+import signal
 import sys
 import threading
 import platform
+from datetime import datetime
 
 import mss
-from PIL import Image, ImageTk
+from PIL import Image, ImageGrab, ImageTk
 from pynput import keyboard
 
 # Tkinter is in different places on Python 3
@@ -19,7 +22,8 @@ else:
     import Tkinter as tk
 
 # --- Config ---
-HOTKEY = "<cmd>+r"  # Cmd+R on Mac, Win+R on Windows/Linux
+_IS_MAC = platform.system() == "Darwin"
+HOTKEY = "<ctrl>+<cmd>+3" if _IS_MAC else "<ctrl>+<alt>+3"  # Ctrl+Cmd+3 on Mac, Ctrl+Alt+3 on Win/Ubuntu
 COLORS = [
     "#e74c3c",  # red
     "#3498db",  # blue
@@ -34,6 +38,16 @@ TOOL_CIRCLE = "circle"
 TOOL_BRUSH = "brush"
 BRUSH_WIDTH = 4
 LINE_WIDTH = 3
+
+
+def _desktop_path():
+    """Return the user's Desktop directory for the current platform."""
+    if platform.system() == "Windows":
+        return os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
+    return os.path.expanduser(
+        os.environ.get("XDG_DESKTOP_DIR", "~/Desktop")
+    )
+
 
 # --- Screenshot ---
 def capture_screen(region=None):
@@ -207,6 +221,8 @@ class AnnotationWindow:
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
+        root.bind("<Control-s>", lambda e: self._save_to_desktop())
+        root.bind("<Command-s>", lambda e: self._save_to_desktop())  # Mac
 
         # Done button
         tk.Button(
@@ -276,6 +292,23 @@ class AnnotationWindow:
         self.current_item = None
         self.brush_line = []
 
+    def _save_to_desktop(self):
+        """Save the current canvas (image + annotations) to Desktop as PNG."""
+        try:
+            desktop = _desktop_path()
+            os.makedirs(desktop, exist_ok=True)
+            name = datetime.now().strftime("screencap_%Y-%m-%d_%H-%M-%S.png")
+            path = os.path.join(desktop, name)
+            # Grab canvas area in screen coordinates
+            x = self.root.winfo_rootx() + self.canvas.winfo_x()
+            y = self.root.winfo_rooty() + self.canvas.winfo_y()
+            w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
+            img = ImageGrab.grab(bbox=(x, y, x + w, y + h))
+            img.save(path)
+            self.root.title(f"Screencap – Saved to {name}")
+        except Exception as e:
+            self.root.title(f"Screencap – Save failed: {e}")
+
     def _on_done(self):
         self.root.destroy()
 
@@ -332,8 +365,16 @@ def main():
     menubar.add_cascade(label="Capture", menu=capture_menu)
     capture_menu.add_command(label="Capture screen", command=on_capture)
 
-    hotkey_desc = "Cmd+R" if platform.system() == "Darwin" else "Win+R"
-    print(f"Screencap running. Press {hotkey_desc} to capture. Close this terminal to exit.")
+    hotkey_desc = "Ctrl+Cmd+3" if _IS_MAC else "Ctrl+Alt+3"
+    print(f"Screencap running. Press {hotkey_desc} to capture. Ctrl+S in annotate window to save. Ctrl+C to exit.")
+
+    def on_sigint(*_):
+        root.after(0, root.quit)
+
+    try:
+        signal.signal(signal.SIGINT, on_sigint)
+    except (ValueError, OSError):
+        pass  # main thread only on some platforms
 
     def run_listener():
         with keyboard.GlobalHotKeys({HOTKEY: on_capture}):
