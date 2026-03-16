@@ -75,7 +75,7 @@ class RegionSelector:
         self.win.attributes("-topmost", True)
         self.win.overrideredirect(True)
         self.win.geometry(f"{full_image.width}x{full_image.height}+0+0")
-        self.win.configure(bg="black")
+        self.win.configure(bg="black", cursor="cross")
 
         self.canvas = tk.Canvas(
             self.win,
@@ -83,6 +83,7 @@ class RegionSelector:
             height=full_image.height,
             highlightthickness=0,
             bg="black",
+            cursor="cross",
         )
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.photo = ImageTk.PhotoImage(full_image)
@@ -94,14 +95,14 @@ class RegionSelector:
         self.win.bind("<Escape>", lambda e: self._cancel())
 
         # Hint (dark text on light bar so it's always readable)
-        self.canvas.create_rectangle(0, 0, full_image.width, 44, fill="#e8e8e8", outline="")
-        self.canvas.create_text(
-            full_image.width // 2,
-            22,
-            text="Drag to select region · Esc to cancel",
-            fill="#1a1a1a",
-            font=("", 14),
-        )
+        # self.canvas.create_rectangle(0, 0, full_image.width, 44, fill="#e8e8e8", outline="")
+        # self.canvas.create_text(
+        #     full_image.width // 2,
+        #     22,
+        #     text="Drag to select region · Esc to cancel",
+        #     fill="#1a1a1a",
+        #     font=("", 14),
+        # )
 
     def _on_press(self, event):
         self.start_x, self.start_y = event.x, event.y
@@ -148,6 +149,9 @@ class AnnotationWindow:
         self.start_x = self.start_y = None
         self.current_item = None
         self.brush_line = []
+        self.draw_size = 4
+        self.draw_size_min = 1
+        self.draw_size_max = 30
 
         # Scale image to fit screen
         max_w = root.winfo_screenwidth() - 80
@@ -168,7 +172,7 @@ class AnnotationWindow:
         toolbar.pack(side=tk.TOP, fill=tk.X)
 
         # Colors (use Frame so the color actually shows on macOS/Windows)
-        tk.Label(toolbar, text="Color:", bg="#2c3e50", fg="#1a1a1a", font=("", 10)).pack(side=tk.LEFT, padx=(0, 6))
+        tk.Label(toolbar, text="Color:", bg="#2c3e50", fg="#ffffff", font=("", 10)).pack(side=tk.LEFT, padx=(0, 6))
         for c in COLORS:
             f = tk.Frame(toolbar, width=24, height=24, bg=c, highlightbackground="#555", highlightthickness=1)
             f.pack(side=tk.LEFT, padx=2)
@@ -177,10 +181,13 @@ class AnnotationWindow:
             # Make it look clickable
             f.bind("<Enter>", lambda e, fr=f: fr.configure(highlightbackground="#fff", highlightthickness=2))
             f.bind("<Leave>", lambda e, fr=f: fr.configure(highlightbackground="#555", highlightthickness=1))
-        tk.Frame(toolbar, width=20).pack(side=tk.LEFT)
+        # Spacer (flat, no border so no "-" appears)
+        spacer = tk.Frame(toolbar, width=20, bg="#2c3e50", relief=tk.FLAT, highlightthickness=0)
+        spacer.pack(side=tk.LEFT)
+        spacer.pack_propagate(False)
 
         # Tools
-        tk.Label(toolbar, text="Tools:", bg="#2c3e50", fg="#1a1a1a", font=("", 10)).pack(side=tk.LEFT, padx=(0, 6))
+        tk.Label(toolbar, text="Tools:", bg="#2c3e50", fg="#ffffff", font=("", 10)).pack(side=tk.LEFT, padx=(0, 6))
         self._tool_btns = {}
         for name, label in [
             (TOOL_ARROW, "Arrow"),
@@ -192,7 +199,7 @@ class AnnotationWindow:
                 toolbar,
                 text=label,
                 bg="#34495e",
-                fg="#1a1a1a",
+                fg="white",
                 activebackground="#1abc9c",
                 activeforeground="white",
                 relief=tk.FLAT,
@@ -204,6 +211,15 @@ class AnnotationWindow:
             b.pack(side=tk.LEFT, padx=2)
             self._tool_btns[name] = b
         self._update_tool_buttons()
+
+        # Size (scroll to change; applies to all tools)
+        tk.Label(toolbar, text="Size:", bg="#2c3e50", fg="#ffffff", font=("", 10)).pack(side=tk.LEFT, padx=(12, 4))
+        self._size_label = tk.Label(toolbar, text=str(self.draw_size), bg="#34495e", fg="#ffffff", font=("", 10), width=3, relief=tk.FLAT)
+        self._size_label.pack(side=tk.LEFT, padx=2)
+        for w in (toolbar, root):
+            w.bind("<MouseWheel>", self._on_scroll_size)
+            w.bind("<Button-4>", self._on_scroll_size)
+            w.bind("<Button-5>", self._on_scroll_size)
 
         # Canvas with image (ImageTk is cross-platform)
         self.photo = ImageTk.PhotoImage(self.display_image)
@@ -221,6 +237,9 @@ class AnnotationWindow:
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
+        self.canvas.bind("<MouseWheel>", self._on_scroll_size)
+        self.canvas.bind("<Button-4>", self._on_scroll_size)
+        self.canvas.bind("<Button-5>", self._on_scroll_size)
         root.bind("<Control-s>", lambda e: self._save_to_desktop())
         root.bind("<Command-s>", lambda e: self._save_to_desktop())  # Mac
 
@@ -246,12 +265,18 @@ class AnnotationWindow:
         self.current_tool = t
         self._update_tool_buttons()
 
+    def _on_scroll_size(self, event):
+        delta = 1 if (getattr(event, "num", None) == 4 or getattr(event, "delta", 0) > 0) else -1
+        self.draw_size = max(self.draw_size_min, min(self.draw_size_max, self.draw_size + delta))
+        self._size_label.config(text=str(self.draw_size))
+        return "break"
+
     def _update_tool_buttons(self):
         for name, btn in self._tool_btns.items():
             if name == self.current_tool:
                 btn.configure(bg="#1abc9c", fg="#ffffff")
             else:
-                btn.configure(bg="#34495e", fg="#1a1a1a")
+                btn.configure(bg="#34495e", fg="#ffffff")
 
     def _on_press(self, event):
         self.start_x, self.start_y = event.x, event.y
@@ -262,11 +287,11 @@ class AnnotationWindow:
 
     def _create_shape_start(self, x, y):
         if self.current_tool == TOOL_ARROW:
-            return self.canvas.create_line(x, y, x, y, fill=self.current_color, width=LINE_WIDTH, arrow=tk.LAST, arrowshape=(12, 14, 6))
+            return self.canvas.create_line(x, y, x, y, fill=self.current_color, width=self.draw_size, arrow=tk.LAST, arrowshape=(12, 14, 6))
         if self.current_tool == TOOL_RECT:
-            return self.canvas.create_rectangle(x, y, x, y, outline=self.current_color, width=LINE_WIDTH)
+            return self.canvas.create_rectangle(x, y, x, y, outline=self.current_color, width=self.draw_size)
         if self.current_tool == TOOL_CIRCLE:
-            return self.canvas.create_oval(x, y, x, y, outline=self.current_color, width=LINE_WIDTH)
+            return self.canvas.create_oval(x, y, x, y, outline=self.current_color, width=self.draw_size)
         return None
 
     def _on_drag(self, event):
@@ -274,7 +299,7 @@ class AnnotationWindow:
             self.brush_line.append((event.x, event.y))
             if len(self.brush_line) >= 2:
                 a, b = self.brush_line[-2], self.brush_line[-1]
-                self.canvas.create_line(a[0], a[1], b[0], b[1], fill=self.current_color, width=BRUSH_WIDTH, capstyle=tk.ROUND, joinstyle=tk.ROUND)
+                self.canvas.create_line(a[0], a[1], b[0], b[1], fill=self.current_color, width=self.draw_size, capstyle=tk.ROUND, joinstyle=tk.ROUND)
         elif self.current_item is not None:
             self._update_shape(self.current_item, self.start_x, self.start_y, event.x, event.y)
 
@@ -318,7 +343,15 @@ def _show_annotation_window(pil_image, parent_root=None):
         win = tk.Toplevel(parent_root)
     else:
         win = tk.Tk()
-    win.geometry(f"{min(pil_image.size[0], 1200)}x{min(pil_image.size[1], 800) + 120}")
+    w = min(pil_image.size[0], 1200)
+    h = min(pil_image.size[1], 800) + 120
+    win.geometry(f"{w}x{h}")
+    win.update_idletasks()
+    sw = win.winfo_screenwidth()
+    sh = win.winfo_screenheight()
+    x = max(0, (sw - w) // 2)
+    y = max(0, (sh - h) // 2)
+    win.geometry(f"{w}x{h}+{x}+{y}")
     AnnotationWindow(win, pil_image)
     if parent_root is None:
         win.mainloop()
@@ -366,7 +399,7 @@ def main():
     capture_menu.add_command(label="Capture screen", command=on_capture)
 
     hotkey_desc = "Ctrl+Cmd+3" if _IS_MAC else "Ctrl+Alt+3"
-    print(f"Screencap running. Press {hotkey_desc} to capture. Ctrl+S in annotate window to save. Ctrl+C to exit.")
+    print(f"Press {hotkey_desc} to capture. Ctrl+S in annotate window to save. Ctrl+C to quit.")
 
     def on_sigint(*_):
         root.after(0, root.quit)
@@ -375,6 +408,13 @@ def main():
         signal.signal(signal.SIGINT, on_sigint)
     except (ValueError, OSError):
         pass  # main thread only on some platforms
+
+    # Periodic callback so the main thread runs Python and pending Ctrl+C (SIGINT) gets processed
+    def _tick():
+        if root.winfo_exists():
+            root.after(250, _tick)
+
+    root.after(250, _tick)
 
     def run_listener():
         with keyboard.GlobalHotKeys({HOTKEY: on_capture}):
