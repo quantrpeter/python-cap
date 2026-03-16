@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "python-cap"
-version = "0.1.0"
+version = "0.1.1"
 description = "Cross-platform screenshot tool with region select and annotation (arrows, shapes, brush)."
 readme = "README.md"
 license = "Apache-2.0"
