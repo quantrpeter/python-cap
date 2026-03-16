@@ -24,10 +24,10 @@ pip install -r requirements.txt
 ## Run
 
 ```bash
-python-cap
+python_cap
 ```
 
-Or from source: `python python-cap.py`
+Or from source: `python python_cap.py`
 
 Leave the terminal open. Press **Ctrl+Cmd+3** (Mac) or **Ctrl+Alt+3** (Windows/Linux) to take a full-screen capture. The annotation window opens with:
 
@@ -49,8 +49,42 @@ Leave the terminal open. Press **Ctrl+Cmd+3** (Mac) or **Ctrl+Alt+3** (Windows/L
 
 ## Publishing to PyPI
 
-1. Create an account at [pypi.org](https://pypi.org) and create a [token](https://pypi.org/manage/account/token/) (scope: entire account or just this project).
-2. Install build and twine: `pip install build twine`
-3. From the project root: `python -m build`
-4. Upload: `twine upload dist/*` (use `__token__` as username and your token as password, or set `TWINE_USERNAME` / `TWINE_PASSWORD`).
-5. If the name `python-cap` is taken on PyPI, change `name` in `pyproject.toml` to something unique (e.g. `screencap-app`) and rebuild.
+1. **Account & token**  
+   Create an account at [pypi.org](https://pypi.org) and create an [API token](https://pypi.org/manage/account/token/) (scope: entire account or project-specific).
+
+2. **Install build tools** (one-time):
+   ```bash
+   pip install build twine
+   ```
+
+3. **Bump version** (optional)  
+   Edit `version` in `pyproject.toml` (e.g. `0.1.1`) before each release.
+
+4. **Build** (from project root):
+   ```bash
+   rm -rf dist build *.egg-info
+   python -m build
+   ```
+
+5. **Upload**:
+   ```bash
+   twine upload dist/*
+   ```
+   When prompted:
+   - Username: `__token__`
+   - Password: your PyPI API token  
+
+   Or use env vars (no prompt):
+   ```bash
+   export TWINE_USERNAME=__token__
+   export TWINE_PASSWORD=pypi-YourTokenHere
+   twine upload dist/*
+   ```
+
+6. **Test install** (optional):
+   ```bash
+   pip install python-cap --force-reinstall
+   python-cap
+   ```
+
+If the name `python-cap` is taken on PyPI, change `name` in `pyproject.toml` to a unique name, then rebuild and upload again.

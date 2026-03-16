@@ -7,7 +7,7 @@ name = "python-cap"
 version = "0.1.0"
 description = "Cross-platform screenshot tool with region select and annotation (arrows, shapes, brush)."
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.7"
 authors = [
   { name = "Peter" }
@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.scripts]
-python-cap = "python-cap:main"
+python-cap = "python_cap:main"
 
 [tool.setuptools]
-py-modules = ["python-cap"]
+py-modules = ["python_cap"]

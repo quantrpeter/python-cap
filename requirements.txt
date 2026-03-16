@@ -1,3 +1,5 @@
+# Runtime dependencies (same as pyproject.toml).
+# For building/publishing to PyPI use: pip install build twine
 mss>=9.0.0
 pynput>=1.7.6
 Pillow>=10.0.0
